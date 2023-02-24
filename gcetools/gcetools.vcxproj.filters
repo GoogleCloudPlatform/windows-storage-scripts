@@ -26,5 +26,14 @@
     <ClInclude Include="StorageDevice.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="GoogleStorageDevice.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="NvmeVersion.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="NvmeV1BasedScsiNameString.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

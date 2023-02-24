@@ -1,11 +1,11 @@
 #include "gcetools.h"
+#include "GoogleStorageDevice.h"
+#include "StorageDevice.h"
 
 #define _WIN32_DCOM
 #include <comdef.h>
 #include <fileapi.h>
-//#include <kernel32.h>
 #include <nvme.h>
-//#include <storduid.h>
 #include <vector>
 #include <Wbemidl.h>
 #include <windows.h>
@@ -17,16 +17,15 @@
 
 const char* PhysicalDrivePrefix = "\\\\.\\PHYSICALDRIVE";
 
-
-
 int main()
 {
-    std::vector<BSTR> devices = GetAllPhysicalDeviceIds();
-
-    for (int i = 0; i < devices.size(); i++) {
-        std::wcout << devices[i] << std::endl;
+    std::vector<BSTR> deviceIds = GetAllPhysicalDeviceIds();
+    
+    for (int i = 0; i < deviceIds.size(); i++) {
+        GoogleStorageDevice device(deviceIds[i]);
+        std::cout << device.GetStorageDeviceDescriptor()->BusType << std::endl;
     }
-
+    
     return 0;   // Program successfully completed.
 }
 
