@@ -19,7 +19,9 @@ public:
 	}
 	STORAGE_BUS_TYPE GetBusType() {
 		STORAGE_DEVICE_DESCRIPTOR* descriptor = GetStorageDeviceDescriptor();
-		return descriptor->BusType;
+		STORAGE_BUS_TYPE busType = descriptor->BusType;
+		free(descriptor);
+		return busType;
 	}
 	STORAGE_ADAPTER_DESCRIPTOR* GetStorageAdapterDescriptor() {
 		return IssueIoctl<STORAGE_ADAPTER_DESCRIPTOR>(STORAGE_PROPERTY_ID::StorageAdapterProperty);
@@ -30,18 +32,13 @@ public:
 	STORAGE_DEVICE_ID_DESCRIPTOR* GetStorageDeviceIdDescriptor() {
 		return IssueIoctl<STORAGE_DEVICE_ID_DESCRIPTOR>(STORAGE_PROPERTY_ID::StorageDeviceIdProperty, /*suggestedBufferSize=*/ 1024);
 	}
-	int* GetNvmeActiveNamespaces() {
-		return NvmeIdentify<int>(
-			STORAGE_PROPERTY_ID::StorageDeviceProtocolSpecificProperty,
-			NVME_IDENTIFY_CNS_CODES::NVME_IDENTIFY_CNS_ACTIVE_NAMESPACES);
-	}
 	NVME_IDENTIFY_CONTROLLER_DATA GetNvmeControllerData() {
-		return *NvmeIdentify<NVME_IDENTIFY_CONTROLLER_DATA>(
+		return NvmeIdentify<NVME_IDENTIFY_CONTROLLER_DATA>(
 			STORAGE_PROPERTY_ID::StorageAdapterProtocolSpecificProperty,
 			NVME_IDENTIFY_CNS_CODES::NVME_IDENTIFY_CNS_CONTROLLER);
 	}
 	NVME_IDENTIFY_NAMESPACE_DATA GetNvmeNamespaceData(DWORD namespaceId) {
-		return *NvmeIdentify<NVME_IDENTIFY_NAMESPACE_DATA>(
+		return NvmeIdentify<NVME_IDENTIFY_NAMESPACE_DATA>(
 			STORAGE_PROPERTY_ID::StorageAdapterProtocolSpecificProperty,
 			NVME_IDENTIFY_CNS_CODES::NVME_IDENTIFY_CNS_SPECIFIC_NAMESPACE,
 			namespaceId);
@@ -59,7 +56,7 @@ protected:
 	}
 
 	template<typename TResult>
-	TResult* NvmeIdentify(STORAGE_PROPERTY_ID propertyId, NVME_IDENTIFY_CNS_CODES identifyCode, DWORD subValue = 0) {
+	TResult NvmeIdentify(STORAGE_PROPERTY_ID propertyId, NVME_IDENTIFY_CNS_CODES identifyCode, DWORD subValue = 0) {
 		STORAGE_PROTOCOL_SPECIFIC_DATA protocolSpecificData = {
 			.ProtocolType = STORAGE_PROTOCOL_TYPE::ProtocolTypeNvme,
 			.DataType = STORAGE_PROTOCOL_NVME_DATA_TYPE::NVMeDataTypeIdentify,
@@ -69,7 +66,29 @@ protected:
 			.ProtocolDataLength = NVME_MAX_LOG_SIZE
 		};
 
-		return IssueIoctl<TResult, STORAGE_PROTOCOL_SPECIFIC_DATA>(propertyId, 0, &protocolSpecificData);
+		// The bufferSize is the sum of:
+		// - the first N bytes of the STORAGE_PROPERTY_QUERY, up to but not
+		//   including the AdditionalParameters field
+		// - the size of AdditionalParameters, which varies but in this case
+		//   contains STORAGE_PROTOCOL_SPECIFIC_DATA
+		// - the maximum size of the response payload, NVME_MAX_LOG_SIZE
+		size_t suggestedBufferSize = FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters) +
+			sizeof(STORAGE_PROTOCOL_SPECIFIC_DATA) +
+			NVME_MAX_LOG_SIZE;
+
+		STORAGE_PROTOCOL_DATA_DESCRIPTOR* result = IssueIoctl<STORAGE_PROTOCOL_DATA_DESCRIPTOR, STORAGE_PROTOCOL_SPECIFIC_DATA>(
+			propertyId,
+			suggestedBufferSize,
+			&protocolSpecificData);
+		
+		size_t identifyDataOffset = FIELD_OFFSET(STORAGE_PROTOCOL_DATA_DESCRIPTOR, ProtocolSpecificData)
+			+ result->ProtocolSpecificData.ProtocolDataOffset;
+		
+		TResult identifyData = *((TResult*)add(result, identifyDataOffset));
+
+		free(result);
+
+		return identifyData;
 	}
 
 private:

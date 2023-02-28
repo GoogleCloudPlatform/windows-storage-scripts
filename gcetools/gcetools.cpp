@@ -23,7 +23,7 @@ int main()
     
     for (int i = 0; i < deviceIds.size(); i++) {
         GoogleStorageDevice device(deviceIds[i]);
-        std::cout << device.GetStorageDeviceDescriptor()->BusType << std::endl;
+        std::cout << device.GetDeviceName() << std::endl;
     }
     
     return 0;   // Program successfully completed.
