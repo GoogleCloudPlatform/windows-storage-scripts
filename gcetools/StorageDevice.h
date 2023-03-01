@@ -27,10 +27,10 @@ public:
 		return IssueIoctl<STORAGE_ADAPTER_DESCRIPTOR>(STORAGE_PROPERTY_ID::StorageAdapterProperty);
 	}
 	STORAGE_DEVICE_DESCRIPTOR* GetStorageDeviceDescriptor() {
-		return IssueIoctl<STORAGE_DEVICE_DESCRIPTOR>(STORAGE_PROPERTY_ID::StorageDeviceProperty, /*suggestedBufferSize=*/ 1024);
+		return IssueIoctl<STORAGE_DEVICE_DESCRIPTOR>(STORAGE_PROPERTY_ID::StorageDeviceProperty);
 	}
 	STORAGE_DEVICE_ID_DESCRIPTOR* GetStorageDeviceIdDescriptor() {
-		return IssueIoctl<STORAGE_DEVICE_ID_DESCRIPTOR>(STORAGE_PROPERTY_ID::StorageDeviceIdProperty, /*suggestedBufferSize=*/ 1024);
+		return IssueIoctl<STORAGE_DEVICE_ID_DESCRIPTOR>(STORAGE_PROPERTY_ID::StorageDeviceIdProperty);
 	}
 	NVME_IDENTIFY_CONTROLLER_DATA GetNvmeControllerData() {
 		return NvmeIdentify<NVME_IDENTIFY_CONTROLLER_DATA>(
@@ -46,13 +46,13 @@ public:
 
 protected:
 	template<typename TResult>
-	TResult* IssueIoctl(STORAGE_PROPERTY_ID propertyId, size_t suggestedBufferSize = 0) {
-		return IssueIoctlHelper<TResult>(propertyId, suggestedBufferSize);
+	TResult* IssueIoctl(STORAGE_PROPERTY_ID propertyId) {
+		return IssueIoctlHelper<TResult>(propertyId);
 	}
 
 	template <typename TResult, typename TAdditionalParameters>
-	TResult* IssueIoctl(STORAGE_PROPERTY_ID propertyId, size_t suggestedBufferSize = 0, TAdditionalParameters* additionalParameters = nullptr) {
-		return IssueIoctlHelper<TResult>(propertyId, suggestedBufferSize, additionalParameters, sizeof(TAdditionalParameters));
+	TResult* IssueIoctl(STORAGE_PROPERTY_ID propertyId, TAdditionalParameters* additionalParameters = nullptr) {
+		return IssueIoctlHelper<TResult>(propertyId, additionalParameters, sizeof(TAdditionalParameters));
 	}
 
 	template<typename TResult>
@@ -72,14 +72,12 @@ protected:
 		// - the size of AdditionalParameters, which varies but in this case
 		//   contains STORAGE_PROTOCOL_SPECIFIC_DATA
 		// - the maximum size of the response payload, NVME_MAX_LOG_SIZE
-		size_t suggestedBufferSize = FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters) +
+		/*size_t suggestedBufferSize = FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters) +
 			sizeof(STORAGE_PROTOCOL_SPECIFIC_DATA) +
-			NVME_MAX_LOG_SIZE;
+			NVME_MAX_LOG_SIZE;*/
 
 		STORAGE_PROTOCOL_DATA_DESCRIPTOR* result = IssueIoctl<STORAGE_PROTOCOL_DATA_DESCRIPTOR, STORAGE_PROTOCOL_SPECIFIC_DATA>(
-			propertyId,
-			suggestedBufferSize,
-			&protocolSpecificData);
+			propertyId, &protocolSpecificData);
 		
 		size_t identifyDataOffset = FIELD_OFFSET(STORAGE_PROTOCOL_DATA_DESCRIPTOR, ProtocolSpecificData)
 			+ result->ProtocolSpecificData.ProtocolDataOffset;
@@ -119,19 +117,12 @@ private:
 	}
 
 	template<typename TResult>
-	TResult* IssueIoctlHelper(STORAGE_PROPERTY_ID propertyId, size_t suggestedBufferSize = 0, void* additionalParameters = nullptr, size_t additionalParametersSize = 0) {
+	TResult* IssueIoctlHelper(STORAGE_PROPERTY_ID propertyId, void* additionalParameters = nullptr, size_t additionalParametersSize = 0) {
 		// Prepare the buffer
 		void* buffer = nullptr;
-		size_t bufferSize;
-
-		if (suggestedBufferSize > 0) {
-			bufferSize = suggestedBufferSize;
-		}
-		else {
-			size_t inputSize = sizeof(STORAGE_PROPERTY_QUERY) + additionalParametersSize;
-			size_t outputSize = sizeof(TResult);
-			bufferSize = max(inputSize, outputSize);
-		}
+		size_t inputSize = sizeof(STORAGE_PROPERTY_QUERY) + additionalParametersSize;
+		size_t outputSize = getOutputBufferSize(propertyId, additionalParameters, additionalParametersSize);
+		size_t bufferSize = max(inputSize, outputSize);
 
 		buffer = malloc(bufferSize);
 
@@ -168,6 +159,43 @@ private:
 		}
 
 		return (TResult*)buffer;
+	}
+
+	DWORD getOutputBufferSize(STORAGE_PROPERTY_ID propertyId, void* additionalParameters = nullptr, size_t additionalParametersSize = 0) {
+		size_t inputBufferSize = sizeof(STORAGE_PROPERTY_QUERY) + additionalParametersSize;
+
+		void* buffer = malloc(inputBufferSize);
+
+		if (buffer == nullptr) {
+			std::cout << "Failed to allocate a buffer, exiting." << std::endl;
+			throw 2;
+		}
+
+		ZeroMemory(buffer, inputBufferSize);
+		
+		PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)buffer;
+		query->PropertyId = propertyId;
+		query->QueryType = STORAGE_QUERY_TYPE::PropertyStandardQuery;
+
+		if (additionalParameters != nullptr && additionalParametersSize > 0) {
+			ULONG additionalParametersOffset = FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters);
+			memcpy(add(query, additionalParametersOffset), additionalParameters, additionalParametersSize);
+		}
+		
+		STORAGE_DESCRIPTOR_HEADER header{};
+		size_t headerSize = sizeof(header);
+
+		DWORD written = 0;
+		BOOL ok = DeviceIoControl(hDevice_,
+			/*dwIoControlCode=*/ IOCTL_STORAGE_QUERY_PROPERTY,
+			/*lpInBuffer=*/ buffer,
+			/*nInBufferSize=*/ inputBufferSize,
+			/*lpOutBuffer=*/ &header,
+			/*nOutBufferSize=*/ headerSize,
+			/*lpBytesReturned=*/ &written,
+			/*lpOverlapped=*/ nullptr);
+
+		return header.Size;
 	}
 
 	void* add(void* ptr, ULONG offset) {
