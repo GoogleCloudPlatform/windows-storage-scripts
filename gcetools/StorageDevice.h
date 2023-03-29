@@ -106,6 +106,7 @@ private:
 			switch (err) {
 			case ERROR_ACCESS_DENIED:
 				std::cout << "Access denied while attempting to get device handle. Did you run as administrator?" << std::endl;
+				break;
 			default:
 				std::cout << "Failed to get device handle. Error code: " << err << std::endl;
 			}
@@ -119,22 +120,37 @@ private:
 	template<typename TResult>
 	TResult* IssueIoctlHelper(STORAGE_PROPERTY_ID propertyId, void* additionalParameters = nullptr, size_t additionalParametersSize = 0) {
 		// Prepare the buffer
-		void* buffer = nullptr;
-		size_t inputSize = sizeof(STORAGE_PROPERTY_QUERY) + additionalParametersSize;
-		size_t outputSize = getOutputBufferSize(propertyId, additionalParameters, additionalParametersSize);
-		size_t bufferSize = max(inputSize, outputSize);
+		size_t inputBufferSize = sizeof(STORAGE_PROPERTY_QUERY) + additionalParametersSize;
+		size_t outputBufferSize = 0;
 
-		buffer = malloc(bufferSize);
+		// We may not always know the size of the query response, such as when it returns a list or a header with a variable sized payload as the next
+		// contiguous byte. First, query for a STORAGE_DESCRIPTOR_HEADER (always the first bytes of all storage query responses) and check for what the
+		// size of the response will be, then allocate an output buffer accordingly.
+		if (std::is_same<TResult, STORAGE_DESCRIPTOR_HEADER>::value) {
+			outputBufferSize = sizeof(STORAGE_DESCRIPTOR_HEADER);
+		}
+		else {
+			STORAGE_DESCRIPTOR_HEADER* header = IssueIoctlHelper<STORAGE_DESCRIPTOR_HEADER>(propertyId, additionalParameters, additionalParametersSize);
+			outputBufferSize = header->Size;
+			free(header);
+		}
+		
+		void* inputBuffer = malloc(inputBufferSize);
+		void* outputBuffer = malloc(outputBufferSize);
 
-		if (buffer == nullptr) {
-			std::cout << "Failed to allocate a buffer, exiting." << std::endl;
-			throw 2;
+		if (inputBuffer == nullptr) {
+			throw std::bad_alloc("Failed to allocate an input buffer for the driver query.");
 		}
 
-		ZeroMemory(buffer, bufferSize);
+		if (outputBuffer == nullptr) {
+			throw std::bad_alloc("Failed to allocate an output buffer for the driver response.");
+		}
+
+		ZeroMemory(inputBuffer, inputBufferSize);
+		ZeroMemory(outputBuffer, outputBufferSize);
 
 		// Prepare the query
-		PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)buffer;
+		PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)inputBuffer;
 		query->PropertyId = propertyId;
 		query->QueryType = STORAGE_QUERY_TYPE::PropertyStandardQuery;
 
@@ -146,56 +162,18 @@ private:
 		DWORD written = 0;
 		BOOL ok = DeviceIoControl(hDevice_,
 			/*dwIoControlCode=*/ IOCTL_STORAGE_QUERY_PROPERTY,
-			/*lpInBuffer=*/ buffer,
-			/*nInBufferSize=*/ bufferSize,
-			/*lpOutBuffer=*/ buffer,
-			/*nOutBufferSize=*/ bufferSize,
+			/*lpInBuffer=*/ inputBuffer,
+			/*nInBufferSize=*/ inputBufferSize,
+			/*lpOutBuffer=*/ outputBuffer,
+			/*nOutBufferSize=*/ outputBufferSize,
 			/*lpBytesReturned=*/ &written,
 			/*lpOverlapped=*/ nullptr);
 
 		if (!ok) {
-			std::cout << "DeviceIoControl failed, exiting." << std::endl;
-			throw 3;
+			throw std::system_error("Driver query returned a not ok reponse.");
 		}
 
-		return (TResult*)buffer;
-	}
-
-	DWORD getOutputBufferSize(STORAGE_PROPERTY_ID propertyId, void* additionalParameters = nullptr, size_t additionalParametersSize = 0) {
-		size_t inputBufferSize = sizeof(STORAGE_PROPERTY_QUERY) + additionalParametersSize;
-
-		void* buffer = malloc(inputBufferSize);
-
-		if (buffer == nullptr) {
-			std::cout << "Failed to allocate a buffer, exiting." << std::endl;
-			throw 2;
-		}
-
-		ZeroMemory(buffer, inputBufferSize);
-		
-		PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)buffer;
-		query->PropertyId = propertyId;
-		query->QueryType = STORAGE_QUERY_TYPE::PropertyStandardQuery;
-
-		if (additionalParameters != nullptr && additionalParametersSize > 0) {
-			ULONG additionalParametersOffset = FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters);
-			memcpy(add(query, additionalParametersOffset), additionalParameters, additionalParametersSize);
-		}
-		
-		STORAGE_DESCRIPTOR_HEADER header{};
-		size_t headerSize = sizeof(header);
-
-		DWORD written = 0;
-		BOOL ok = DeviceIoControl(hDevice_,
-			/*dwIoControlCode=*/ IOCTL_STORAGE_QUERY_PROPERTY,
-			/*lpInBuffer=*/ buffer,
-			/*nInBufferSize=*/ inputBufferSize,
-			/*lpOutBuffer=*/ &header,
-			/*nOutBufferSize=*/ headerSize,
-			/*lpBytesReturned=*/ &written,
-			/*lpOverlapped=*/ nullptr);
-
-		return header.Size;
+		return (TResult*)outputBuffer;
 	}
 
 	void* add(void* ptr, ULONG offset) {
