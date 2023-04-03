@@ -167,6 +167,8 @@ private:
 			/*lpBytesReturned=*/ &written,
 			/*lpOverlapped=*/ nullptr);
 
+		free(inputBuffer);
+
 		if (!ok) {
 			throw std::system_error("Driver query returned a not ok reponse.");
 		}
