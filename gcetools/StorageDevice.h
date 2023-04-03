@@ -6,6 +6,7 @@
 #include <iostream>
 #include <nvme.h>
 #include <stdexcept>
+#include <string>
 #include <wtypes.h>
 #include "NvmeVersion.h"
 
@@ -105,13 +106,10 @@ private:
 
 			switch (err) {
 			case ERROR_ACCESS_DENIED:
-				std::cout << "Access denied while attempting to get device handle. Did you run as administrator?" << std::endl;
-				break;
+				throw std::runtime_error("Access denied while attempting to get device handle. Did you run as administrator?");
 			default:
-				std::cout << "Failed to get device handle. Error code: " << err << std::endl;
+				throw std::runtime_error("Failed to get device handle. Error code: " + std::to_string(err));
 			}
-
-			throw 1;
 		}
 
 		return hDevice;

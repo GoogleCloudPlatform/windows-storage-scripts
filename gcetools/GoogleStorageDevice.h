@@ -21,8 +21,8 @@ public:
 		case STORAGE_BUS_TYPE::BusTypeScsi:
 			return GetScsiDeviceName();
 		default:
-			std::cout << "Unsupported device type. Device must be attached as an NVMe or SCSI device." << std::endl;
-			throw 9;
+			std::cerr << "Unsupported device type. Device must be an NVMe or SCSI device." << std::endl;
+			return std::string("");
 		}
 	}
 
@@ -71,7 +71,7 @@ private:
 			}
 		}
 
-		std::cout << "Device is not a Google Persistent Disk." << std::endl;
+		std::cerr << "Device is not a Google Persistent Disk." << std::endl;
 		return std::string("");
 	}
 };
