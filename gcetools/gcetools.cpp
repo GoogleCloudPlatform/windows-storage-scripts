@@ -1,3 +1,17 @@
+/* Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include "gcetools.h"
 #include "GoogleStorageDevice.h"
 #include "StorageDevice.h"
@@ -52,10 +66,10 @@ std::vector<BSTR> GetAllPhysicalDeviceIds() {
         -1,                          // COM authentication
         NULL,                        // Authentication services
         NULL,                        // Reserved
-        RPC_C_AUTHN_LEVEL_DEFAULT,   // Default authentication 
-        RPC_C_IMP_LEVEL_IMPERSONATE, // Default Impersonation  
+        RPC_C_AUTHN_LEVEL_DEFAULT,   // Default authentication
+        RPC_C_IMP_LEVEL_IMPERSONATE, // Default Impersonation
         NULL,                        // Authentication info
-        EOAC_NONE,                   // Additional capabilities 
+        EOAC_NONE,                   // Additional capabilities
         NULL                         // Reserved
     );
 
@@ -103,7 +117,7 @@ std::vector<BSTR> GetAllPhysicalDeviceIds() {
         0,                       // Locale. NULL indicates current
         NULL,                    // Security flags.
         0,                       // Authority (for example, Kerberos)
-        0,                       // Context object 
+        0,                       // Context object
         &pSvc                    // pointer to IWbemServices proxy
     );
 
@@ -126,11 +140,11 @@ std::vector<BSTR> GetAllPhysicalDeviceIds() {
         pSvc,                        // Indicates the proxy to set
         RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx
         RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx
-        NULL,                        // Server principal name 
-        RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx 
+        NULL,                        // Server principal name
+        RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx
         RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
         NULL,                        // client identity
-        EOAC_NONE                    // proxy capabilities 
+        EOAC_NONE                    // proxy capabilities
     );
 
     if (FAILED(hres))
